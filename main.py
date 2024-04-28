@@ -1,3 +1,4 @@
+import re
 import psycopg2
 import psycopg2.extras
 from jose import jwt
@@ -36,21 +37,50 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def add_process_time_header(request: Request, call_next):
+
+    print(request.url.path)
+    path_param = "%s %s" % (request.method, request.url.path)
+
+    print(request.receive)
+
+    match path_param:
+        case "Om" | "Vishal":
+            print("You are not allowed to access the database !")
+        case "Rishabh":
+            print("You are allowed to access the database !")
+        case _:
+            print("You are not a company memeber , you are not \
+            allowed to access the code !")
+
+    """ creds = jwt.decode(token, key=fe_secret)
+    request.state.sub = creds["sub"]
+
+    print(request.url.path)
+    print(request.method)
+    request.state.poop = "doop" """
+    response = await call_next(request)
+
+    return response
+
+
 def rest_transaction(function):
-    @wraps(function)
+    @ wraps(function)
     async def transaction(*args, **kwargs):
         try:
             executed = await function(*args, **kwargs)
             return executed
         except Exception as error:
             print(error)
+            conn.rollback()
             raise HTTPException(
                 status_code=500, detail="internal server error")
     return transaction
 
 
 async def verify_token(request: Request, authorization: Annotated[str, Header()]):
-    print("hey")
+    print(request.url.path)
     try:
         token = authorization.split(" ")[1]
         creds = jwt.decode(token, key=fe_secret)
@@ -60,54 +90,74 @@ async def verify_token(request: Request, authorization: Annotated[str, Header()]
         raise HTTPException(status_code=401, detail="invalid credentials")
 
 
-@app.get("/")
+@ app.get("/")
 async def root():
     return {"message": "Hello World"}
 
 
-@app.get("/contracts")
-@rest_transaction
-async def get_contract(authorization: Annotated[str | None, Header()] = None):
-    response = {"detail": "no existing contract found"}
+@ app.delete("/contracts/{contract_id}", dependencies=[Depends(verify_token)])
+@ rest_transaction
+async def get_contract(contract_id: int, request: Request):
+    command = """delete from contracts using users where
+        users.user_id = contracts.user_id and contracts.contract_id = %s
+        and users.email = '%s' returning contracts.employer;""" % (
+        contract_id, request.state.sub)
+    cursor.execute(command)
+    employer = cursor.fetchone()["employer"]
+    detail = "successfully deleted %s" % employer
+    return JSONResponse({"detail": detail}, 200)
 
-    if authorization != None:
-        token = authorization.split(" ")[1]
-        creds = jwt.decode(token, key=fe_secret)
-        command = """select employer, per_hour from contracts 
-            join users on users.user_id = contracts.user_id 
-            where users.email ='%s';""" % creds["sub"]
-        cursor.execute(command)
-        contract = cursor.fetchone()
-        response = contract
 
+@ app.get("/contracts", dependencies=[Depends(verify_token)])
+@ rest_transaction
+async def get_contract(request: Request):
+    command = """select employer, hourly, contract_id from contracts
+        join users on users.user_id = contracts.user_id
+        where users.email ='%s' order by contract_id asc;""" % request.state.sub
+    cursor.execute(command)
+    contract = cursor.fetchall()
+    response = contract if contract != None else {
+        "detail": "no existing contract found"}
     return response
 
 
-@app.post("/contracts", dependencies=[Depends(verify_token)])
+@ app.post("/contracts", dependencies=[Depends(verify_token)])
+@ rest_transaction
 async def save_contract(request: Request):
-    response, code = {"detail": "cannot register contract"}, 400
+    detail, action, code = "cannot register contract", "", 400
     content = await request.json()
     email = request.state.sub
-
     get_user_cmd = "select user_id from users where email = '%s';" % email
     cursor.execute(get_user_cmd)
     user_id = cursor.fetchone()["user_id"]
-    insert_cmd = "insert into contracts (employer,per_hour,user_id) values ('%s',%s,%s);" % (
-        content["employer"], content["rate"], user_id)
-    cursor.execute(insert_cmd)
+    next_cmd = ""
+
+    if "contract_id" in content:
+        next_cmd += """update contracts set employer = '%s', hourly = %s
+            where user_id = %s and contract_id = %s""" % (
+            content["employer"], content["hourly"], user_id, content["contract_id"])
+        action = "updated"
+    else:
+        next_cmd += "insert into contracts (employer,hourly,user_id) values ('%s',%s,%s);" % (
+            content["employer"], content["hourly"], user_id)
+        action = "created"
+
+    cursor.execute(next_cmd)
     executed = cursor.rowcount > 0
     conn.commit()
 
     if executed:
-        response, code = {"detail": "successfully created contract"}, 200
+        detail, code = "successfully %s contract for %s" % (
+            action, content["employer"]), 200
 
-    return JSONResponse(response, code)
+    return JSONResponse({"detail": detail}, code)
 
 
-@app.post("/sign-in")
+@ app.post("/sign-in")
+@ rest_transaction
 async def sign_in(request: Request):
     content = await request.json()
-    command = "select email,created,password from users where email = '%s';" % content[
+    command = """select email,created,password from users where email = '%s';""" % content[
         "email"]
     cursor.execute(command)
     user = cursor.fetchone()
@@ -119,5 +169,6 @@ async def sign_in(request: Request):
         jwt_payload = {"sub": user["email"], "iat": now,
                        "exp": expires, "created": str(user["created"])}
         token = jwt.encode(jwt_payload, fe_secret)
-        response, code = {"detail": "successful log in", "token": token}, 200
+        response, code = {"detail": "successful log in",
+                          "token": token}, 200
     return JSONResponse(response, code)
