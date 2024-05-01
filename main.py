@@ -67,10 +67,8 @@ async def get_contract(request: Request):
         join users on users.user_id = contracts.user_id
         where users.email ='%s' order by contract_id asc;""" % request.state.sub
     cursor.execute(command)
-    contract = cursor.fetchall()
-    response = contract if contract != None else {
-        "detail": "no existing contract found"}
-    return response
+    contracts = cursor.fetchall()
+    return contracts
 
 
 @ contracts.post("/")
