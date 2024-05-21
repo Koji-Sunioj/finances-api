@@ -1,17 +1,21 @@
 from jose import jwt
+from functools import wraps
 from fastapi.responses import JSONResponse
 from fastapi import FastAPI, Request, Depends, APIRouter
 from passlib.context import CryptContext
 from datetime import datetime, timezone, timedelta
 from fastapi.middleware.cors import CORSMiddleware
 
-from api_utils import ApiUTILs
+from api_utils import rest_transaction, verify_token, fe_secret, cursor
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-conn, fe_secret, cursor = ApiUTILs().util_params()
 app = FastAPI()
 contracts = APIRouter(prefix="/contracts",
-                      dependencies=[Depends(ApiUTILs().verify_token)])
+                      dependencies=[Depends(verify_token)])
+
+shifts = APIRouter(prefix="/shifts",
+                   dependencies=[Depends(verify_token)])
+
 
 origins = [
     "http://localhost:3000",
@@ -26,8 +30,19 @@ app.add_middleware(
 )
 
 
+@ shifts.post("/")
+@ rest_transaction
+async def create_shift(request: Request):
+    content = await request.json()
+    command = """insert into shifts (contract_id ,start_time, end_time) 
+        values (%s,%s,%s) returning *;"""
+    data = (content["contract_id"], content["start_time"], content["end_time"])
+    cursor.execute(command, data)
+    return {"hey": "cunt"}
+
+
 @ app.post("/sign-in")
-@ ApiUTILs().rest_transaction
+@ rest_transaction
 async def sign_in(request: Request):
     content = await request.json()
     command = """select email,created,password from users where email = '%s';""" % content[
@@ -48,8 +63,9 @@ async def sign_in(request: Request):
 
 
 @ contracts.delete("/{contract_id}")
-@ ApiUTILs().rest_transaction
+@ rest_transaction
 async def get_contract(contract_id: int, request: Request):
+    print("asdasd")
     command = """delete from contracts using users where
         users.user_id = contracts.user_id and contracts.contract_id = %s
         and users.email = '%s' returning contracts.employer;""" % (
@@ -61,7 +77,7 @@ async def get_contract(contract_id: int, request: Request):
 
 
 @ contracts.get("/")
-@ ApiUTILs().rest_transaction
+@ rest_transaction
 async def get_contract(request: Request):
     command = """select employer, hourly, contract_id from contracts
         join users on users.user_id = contracts.user_id
@@ -72,7 +88,7 @@ async def get_contract(request: Request):
 
 
 @ contracts.post("/")
-@ ApiUTILs().rest_transaction
+@ rest_transaction
 async def save_contract(request: Request):
     detail, action, code = "cannot register contract", "", 400
     content = await request.json()
@@ -103,3 +119,4 @@ async def save_contract(request: Request):
 
 
 app.include_router(contracts)
+app.include_router(shifts)
