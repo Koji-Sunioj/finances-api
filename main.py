@@ -1,10 +1,14 @@
+
+import math
+import datetime
+import numpy as np
+import pandas as pd
 from jose import jwt
-from functools import wraps
-from fastapi.responses import JSONResponse
-from fastapi import FastAPI, Request, Depends, APIRouter
 from passlib.context import CryptContext
+from fastapi.responses import JSONResponse
 from datetime import datetime, timezone, timedelta
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, Request, Depends, APIRouter
 
 from api_utils import rest_transaction, verify_token, fe_secret, cursor
 
@@ -28,6 +32,27 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@ shifts.get("/month/{month}/year/{year}")
+@ rest_transaction
+async def get_calendar(request: Request, month: int, year: int):
+    normalized = pd.Timestamp(year=year, month=month, day=1)
+    european_day_of_week = normalized.day_of_week
+    if european_day_of_week != 6:
+        first_cal_day = normalized - \
+            pd.Timedelta(european_day_of_week + 1, unit="d")
+    else:
+        first_cal_day = normalized
+    last_day_of_month = pd.Timestamp(
+        year=normalized.year, month=normalized.month, day=normalized.daysinmonth)
+    day_diff = (last_day_of_month - first_cal_day).days * 1 + 1
+    num_days = math.ceil(day_diff / 7) * 7
+    last_cal_day = first_cal_day + pd.Timedelta(num_days-1, unit="d")
+    days = pd.date_range(first_cal_day, last_cal_day).strftime("%Y-%m-%d")
+    calendar = pd.DataFrame(data=np.reshape(days, newshape=(
+        int(len(days) / 7), 7))).values.tolist()
+    return {"calendar": calendar}
 
 
 @ shifts.post("/")
