@@ -50,8 +50,10 @@ async def get_calendar(request: Request, month: int, year: int):
     num_days = math.ceil(day_diff / 7) * 7
     last_cal_day = first_cal_day + pd.Timedelta(num_days-1, unit="d")
     days = pd.date_range(first_cal_day, last_cal_day).strftime("%Y-%m-%d")
-    calendar = pd.DataFrame(data=np.reshape(days, newshape=(
-        int(len(days) / 7), 7))).values.tolist()
+    calendar = np.reshape(days, newshape=(int(len(days) / 7), 7)).tolist()
+    print(calendar)
+    # calendar = pd.DataFrame(data=np.reshape(days, newshape=(
+    #    int(len(days) / 7), 7))).values.tolist()
     return {"calendar": calendar}
 
 
