@@ -10,7 +10,7 @@ from datetime import datetime, timezone, timedelta
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, Request, Depends, APIRouter
 
-from api_utils import rest_transaction, verify_token, fe_secret, cursor
+from api_utils import rest_transaction, verify_token, fe_secret, cursor, create_token, merge_shifts, get_shifts
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 app = FastAPI()
@@ -50,11 +50,34 @@ async def get_calendar(request: Request, month: int, year: int):
     num_days = math.ceil(day_diff / 7) * 7
     last_cal_day = first_cal_day + pd.Timedelta(num_days-1, unit="d")
     days = pd.date_range(first_cal_day, last_cal_day).strftime("%Y-%m-%d")
-    calendar = np.reshape(days, newshape=(int(len(days) / 7), 7)).tolist()
-    print(calendar)
-    # calendar = pd.DataFrame(data=np.reshape(days, newshape=(
-    #    int(len(days) / 7), 7))).values.tolist()
+    shift_data = get_shifts("koji.gabriel218@gmail.com", year, month)
+    shifts = pd.DataFrame(shift_data)
+    merged = merge_shifts(shifts, days, year, month)
+
+    days = {}
+
+    for row in merged.to_dict(orient="records"):
+        if row["date"] not in days:
+            days[row["date"]] = []
+
+        if not pd.isnull(row["employer"]):
+            shift = {"employer": row["employer"],
+                     "start": row["start"], "end": row["end"]}
+            days[row["date"]].append(shift)
+
+    calendar = np.reshape([{"day": day, "shifts": days[day]}
+                          for day in days], newshape=(int(len(days) / 7), 7)).tolist()
     return {"calendar": calendar}
+
+
+@ app.post("/session", dependencies=[Depends(verify_token)])
+async def check_session(request: Request):
+    user = request.state.sub
+    command = "select created from users where email =%s;"
+    cursor.execute(command, (user,))
+    created = cursor.fetchone()["created"]
+    token = create_token(user, created)
+    return {"token": token}
 
 
 @ shifts.post("/")
@@ -79,11 +102,7 @@ async def sign_in(request: Request):
     response, code = {"detail": "cannot log in"}, 400
     verified = pwd_context.verify(content["password"], user["password"])
     if verified:
-        now = datetime.now(timezone.utc)
-        expires = now + timedelta(minutes=180)
-        jwt_payload = {"sub": user["email"], "iat": now,
-                       "exp": expires, "created": str(user["created"])}
-        token = jwt.encode(jwt_payload, fe_secret)
+        token = create_token(user["email"], user["created"])
         response, code = {"detail": "successful log in",
                           "token": token}, 200
     return JSONResponse(response, code)
