@@ -10,7 +10,7 @@ from datetime import datetime, timezone, timedelta
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, Request, Depends, APIRouter
 
-from api_utils import rest_transaction, verify_token, fe_secret, cursor, create_token, merge_shifts, get_shifts
+from api_utils import rest_transaction, verify_token, fe_secret, cursor, create_token, merge_shifts, get_shifts, split_cross_days
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 app = FastAPI()
@@ -52,6 +52,10 @@ async def get_calendar(request: Request, month: int, year: int):
     days = pd.date_range(first_cal_day, last_cal_day).strftime("%Y-%m-%d")
     shift_data = get_shifts("koji.gabriel218@gmail.com", year, month)
     shifts = pd.DataFrame(shift_data)
+
+    if len(shifts) > 0 and any((shifts["start_time"].dt.day < shifts["end_time"].dt.day).tolist()):
+        shifts = split_cross_days(shifts)
+
     merged = merge_shifts(shifts, days, year, month)
 
     days = {}
@@ -111,7 +115,6 @@ async def sign_in(request: Request):
 @ contracts.delete("/{contract_id}")
 @ rest_transaction
 async def get_contract(contract_id: int, request: Request):
-    print("asdasd")
     command = """delete from contracts using users where
         users.user_id = contracts.user_id and contracts.contract_id = %s
         and users.email = '%s' returning contracts.employer;""" % (
