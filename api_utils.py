@@ -12,7 +12,7 @@ from datetime import datetime, timezone, timedelta
 conn = psycopg2.connect(database="finances",
                         host="localhost",
                         user="postgres",
-                        password="6a6df1f9-21fc-4387-b545-55488f246fe4",
+                        password="Karelia",
                         port=5432)
 fe_secret = "8cf6dd08-d118-4976-ba83-fb6f2b0497d8"
 cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)

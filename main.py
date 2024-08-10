@@ -69,7 +69,7 @@ async def get_calendar(request: Request, month: int, year: int):
                      "start": row["start"], "end": row["end"]}
             days[row["date"]].append(shift)
 
-    calendar = np.reshape([{"day": day, "shifts": days[day]}
+    calendar = np.reshape([{"day": day, "shifts": days[day], "state": "saved"}
                           for day in days], newshape=(int(len(days) / 7), 7)).tolist()
     return {"calendar": calendar}
 
