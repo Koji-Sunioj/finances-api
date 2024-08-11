@@ -22,7 +22,7 @@ def split_cross_days(shifts):
     new_rows = []
 
     for row in shifts.to_dict(orient="records"):
-        if row["start_time"].day < row["end_time"].day:
+        if row["start_time"].day != row["end_time"].day:
             new_range = pd.date_range(
                 row["start_time"], row["end_time"], freq="min")
             days = np.unique(new_range.day).tolist()
@@ -39,17 +39,22 @@ def split_cross_days(shifts):
     return pd.DataFrame(new_rows)
 
 
-def merge_shifts(shifts, days, year, month):
+def merge_shifts(shifts_frame, days, begin, end):
     calendar_f = pd.DataFrame(data={"date": days}).astype(str)
 
-    if len(shifts) > 0:
-        begin = pd.Timestamp(year=year, month=month, day=1, hour=0)
-        end = begin + pd.offsets.MonthEnd() + pd.DateOffset(hour=23) + \
+    if len(shifts_frame) > 0:
+        end_offset = end + pd.DateOffset(hour=23) + \
             pd.DateOffset(minutes=59)
         begin_f, end_f = begin.strftime(
-            "%Y-%m-%d %H:%M"), end.strftime("%Y-%m-%d %H:%M")
+            "%Y-%m-%d %H:%M"), end_offset.strftime("%Y-%m-%d %H:%M")
+
+        shifts = shifts_frame[(shifts_frame["start_time"] >= begin_f) & (
+            (shifts_frame["end_time"] <= end_f))].copy()
+
         shifts.loc[shifts['start_time'] < begin_f, 'start_time'] = begin_f
+        print(shifts)
         shifts.loc[shifts['end_time'] >= end_f, 'end_time'] = end_f
+        print(shifts)
         shifts["date"] = shifts["start_time"].dt.date.astype(str)
         shifts["start"] = shifts["start_time"].dt.time.astype(
             str).str.slice(start=0, stop=5)
@@ -64,17 +69,17 @@ def merge_shifts(shifts, days, year, month):
     return merged
 
 
-def get_shifts(username, year, month):
+# def get_shifts(username, year, month):
+def get_shifts(username, start_time, end_time):
     command = """
     select start_time,end_time,employer from shifts 
     join contracts on contracts.contract_id = shifts.contract_id
-    join users on contracts.user_id = contracts.user_id
-    where 
-    date_part('year',start_time) = %s and date_part('month',start_time) = %s or
-    date_part('year',end_time) = %s and date_part('month',end_time) = %s
-    and users.email = %s
-    order by start_time asc;"""
-    params = (year, month, year, month, username)
+    join users on contracts.user_id = contracts.user_id 
+    where end_time > %s and 
+    start_time < date(%s) + interval '1 days' and
+    users.email = %s order by start_time asc;
+    """
+    params = (start_time, end_time, username)
     cursor.execute(command, params)
     data = cursor.fetchall()
     return data

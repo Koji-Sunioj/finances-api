@@ -49,14 +49,17 @@ async def get_calendar(request: Request, month: int, year: int):
     day_diff = (last_day_of_month - first_cal_day).days * 1 + 1
     num_days = math.ceil(day_diff / 7) * 7
     last_cal_day = first_cal_day + pd.Timedelta(num_days-1, unit="d")
+
     days = pd.date_range(first_cal_day, last_cal_day).strftime("%Y-%m-%d")
-    shift_data = get_shifts("koji.gabriel218@gmail.com", year, month)
+    shift_data = get_shifts("koji.gabriel218@gmail.com",
+                            first_cal_day, last_cal_day)
+
     shifts = pd.DataFrame(shift_data)
 
-    if len(shifts) > 0 and any((shifts["start_time"].dt.day < shifts["end_time"].dt.day).tolist()):
+    if len(shifts) > 0 and any((shifts["start_time"].dt.day != shifts["end_time"].dt.day).tolist()):
         shifts = split_cross_days(shifts)
 
-    merged = merge_shifts(shifts, days, year, month)
+    merged = merge_shifts(shifts, days, first_cal_day, last_cal_day)
 
     days = {}
 
