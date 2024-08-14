@@ -69,10 +69,10 @@ async def get_calendar(request: Request, month: int, year: int):
 
         if not pd.isnull(row["employer"]):
             shift = {"employer": row["employer"],
-                     "start": row["start"], "end": row["end"]}
+                     "start": row["start"], "end": row["end"], "state": "saved"}
             days[row["date"]].append(shift)
 
-    calendar = np.reshape([{"day": day, "shifts": days[day], "state": "saved"}
+    calendar = np.reshape([{"day": day, "shifts": days[day]}
                           for day in days], newshape=(int(len(days) / 7), 7)).tolist()
     return {"calendar": calendar}
 
