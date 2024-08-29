@@ -34,6 +34,23 @@ app.add_middleware(
 )
 
 
+@ shifts.get("/availability")
+@ rest_transaction
+async def check_availability(request: Request, start: str, end: str):
+    command = """
+    select count(shift_id) as shifts from shifts
+    join contracts on contracts.contract_id = shifts.contract_id
+    join users on users.user_id = contracts.user_id
+    where start_time between %s and %s and users.email = %s
+    or end_time between %s and %s and users.email = %s;"""
+    params = (start, end, request.state.sub, start, end, request.state.sub)
+    cursor.execute(command, params)
+    print(cursor.query)
+    data = cursor.fetchone()
+
+    return data
+
+
 @ shifts.get("/month/{month}/year/{year}")
 @ rest_transaction
 async def get_calendar(request: Request, month: int, year: int):
@@ -51,7 +68,7 @@ async def get_calendar(request: Request, month: int, year: int):
     last_cal_day = first_cal_day + pd.Timedelta(num_days-1, unit="d")
 
     days = pd.date_range(first_cal_day, last_cal_day).strftime("%Y-%m-%d")
-    shift_data = get_shifts("koji.gabriel218@gmail.com",
+    shift_data = get_shifts(request.state.sub,
                             first_cal_day, last_cal_day)
 
     shifts = pd.DataFrame(shift_data)
@@ -91,6 +108,7 @@ async def check_session(request: Request):
 @ rest_transaction
 async def create_shift(request: Request):
     content = await request.json()
+    print(content)
     command = """insert into shifts (contract_id ,start_time, end_time) 
         values (%s,%s,%s) returning *;"""
     data = (content["contract_id"], content["start_time"], content["end_time"])

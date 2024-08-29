@@ -52,9 +52,8 @@ def merge_shifts(shifts_frame, days, begin, end):
             (shifts_frame["end_time"] <= end_f))].copy()
 
         shifts.loc[shifts['start_time'] < begin_f, 'start_time'] = begin_f
-        print(shifts)
         shifts.loc[shifts['end_time'] >= end_f, 'end_time'] = end_f
-        print(shifts)
+
         shifts["date"] = shifts["start_time"].dt.date.astype(str)
         shifts["start"] = shifts["start_time"].dt.time.astype(
             str).str.slice(start=0, stop=5)
@@ -74,7 +73,7 @@ def get_shifts(username, start_time, end_time):
     command = """
     select start_time,end_time,employer from shifts 
     join contracts on contracts.contract_id = shifts.contract_id
-    join users on contracts.user_id = contracts.user_id 
+    join users on users.user_id = contracts.user_id 
     where end_time > %s and 
     start_time < date(%s) + interval '1 days' and
     users.email = %s order by start_time asc;
